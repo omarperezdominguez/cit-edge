@@ -31,6 +31,9 @@
 #       media.close          la cierra antes de tiempo
 #       app.restart          reinicia los servicios (cit.sh reiniciar)
 #       module.restart       reinicio ordenado del sistema operativo
+#       module.shutdown      apagado ordenado del sistema operativo (NO vuelve
+#                            a encender solo: hace falta cortar y devolver la
+#                            energia, o la ignicion cuando exista R08)
 #       diagnostics.request  devuelve una foto del estado del equipo
 #   El corte de energia NO es un comando: es atribucion del watchdog (R25).
 #
@@ -43,7 +46,7 @@
 #   - Comando repetido (mismo command_id): no se ejecuta otra vez; se vuelve a
 #     informar el resultado que ya tuvo.
 #   - Comando caducado (ts_issued + ttl_s ya paso): se descarta aunque llegue.
-#   - Como mucho MAX_REINICIOS_HORA reinicios (app o modulo) por hora
+#   - Como mucho MAX_REINICIOS_HORA reinicios o apagados (app o modulo) por hora
 #     (0 = sin limite; solo para pruebas, el ADR pide 3).
 #   - Otro device_id, un tipo fuera de la lista o un campo obligatorio vacio:
 #     se rechaza.
@@ -80,6 +83,7 @@
 #   CIT_MAX_REINICIOS_HORA=3     0 = sin limite (pruebas)
 #   CIT_CMD_REINICIO_APP      por omision: <este directorio>/cit.sh reiniciar
 #   CIT_CMD_REINICIO_SO       por omision: sudo -n /usr/bin/systemctl reboot
+#   CIT_CMD_APAGADO_SO        por omision: sudo -n /usr/bin/systemctl poweroff
 #
 # Requisito: pip3 install paho-mqtt   (API v2)
 # =============================================================================
@@ -136,6 +140,7 @@ MAX_REINICIOS_HORA = int(os.environ.get("CIT_MAX_REINICIOS_HORA", "3"))
 CMD_REINICIO_APP = os.environ.get(
     "CIT_CMD_REINICIO_APP", "{} reiniciar".format(shlex.quote(os.path.join(AQUI, "cit.sh"))))
 CMD_REINICIO_SO = os.environ.get("CIT_CMD_REINICIO_SO", "sudo -n /usr/bin/systemctl reboot")
+CMD_APAGADO_SO = os.environ.get("CIT_CMD_APAGADO_SO", "sudo -n /usr/bin/systemctl poweroff")
 
 # Archivos propios, todos en datos/ (fuera de git)
 DIARIO = os.path.join(DATOS, "salida_vm.jsonl")        # lo que falta por subir
@@ -148,8 +153,9 @@ TEMA_CMD = "{}/{}/cmd".format(PREFIJO, DEVICE_ID)
 TEMAS_SALIDA = ("telemetria", "resultado")
 
 TIPOS = ("media.open", "media.close", "app.restart", "module.restart",
-         "diagnostics.request")
-REINICIOS = ("app.restart", "module.restart")
+         "module.shutdown", "diagnostics.request")
+# Comandos que matan al propio agente: su resultado final se cierra al volver.
+REINICIOS = ("app.restart", "module.restart", "module.shutdown")
 OBLIGATORIOS = ("command_id", "device_id", "type", "issued_by", "ts_issued",
                 "ttl_s", "reason")
 
@@ -460,6 +466,12 @@ class Agente:
             return
         if lc["type"] == "module.restart" and lc.get("boot_id") == self.boot:
             lc.update(status="fallida", detail="el sistema no se reinicio",
+                      ts_applied=ahora_iso())
+        elif lc["type"] == "module.shutdown" and lc.get("boot_id") == self.boot:
+            lc.update(status="fallida", detail="el sistema no se apago",
+                      ts_applied=ahora_iso())
+        elif lc["type"] == "module.shutdown":
+            lc.update(status="aplicada", detail="el equipo se apago y volvio a encender",
                       ts_applied=ahora_iso())
         else:
             lc.update(status="aplicada", detail="el equipo volvio en linea",
@@ -802,9 +814,12 @@ class Agente:
         if tipo == "module.restart":
             return self._reiniciar(CMD_REINICIO_SO, "sistema operativo")
 
+        if tipo == "module.shutdown":
+            return self._reiniciar(CMD_APAGADO_SO, "sistema operativo", accion="apagado")
+
         return "rechazada", "tipo sin implementar", None
 
-    def _reiniciar(self, comando, que):
+    def _reiniciar(self, comando, que, accion="reinicio"):
         # El "en_curso" tiene que llegar a la VM antes de que el reinicio nos
         # mate: se espera a que el diario este confirmado (hasta 10 s).
         limite = time.time() + 10
@@ -812,7 +827,7 @@ class Agente:
             time.sleep(0.2)
         entorno = dict(os.environ)
         entorno.pop("TMUX", None)        # cit.sh se niega a arrancar dentro de tmux
-        aviso("Reiniciando {}: {}".format(que, comando))
+        aviso("{} ({}): {}".format(accion.capitalize(), que, comando))
         # La salida va a un archivo, no a una tuberia: este proceso va a
         # morir durante el reinicio y una tuberia llena bloquearia a cit.sh.
         ruta_log = os.path.join(DATOS, "reinicio.log")
@@ -822,7 +837,7 @@ class Agente:
                                         stdout=log, stderr=subprocess.STDOUT,
                                         start_new_session=True, env=entorno)
         except OSError as e:
-            return "fallida", "no se pudo lanzar el reinicio: {}".format(e), None
+            return "fallida", "no se pudo lanzar el {}: {}".format(accion, e), None
         # Si falla, suele ser al instante (p.ej. sudo sin permiso). Si no ha
         # fallado en 5 s, se da por lanzado y el resultado se cierra al volver.
         try:
@@ -833,19 +848,20 @@ class Agente:
                         salida = f.read().strip()
                 except OSError:
                     salida = ""
-                return "fallida", "el reinicio fallo (codigo {}): {}".format(
-                    codigo, salida[-200:]), None
+                return "fallida", "el {} fallo (codigo {}): {}".format(
+                    accion, codigo, salida[-200:]), None
         except subprocess.TimeoutExpired:
             pass
-        # Si en 120 s este proceso sigue vivo, el reinicio no ocurrio.
+        # Si en 120 s este proceso sigue vivo, el reinicio (o apagado) no ocurrio.
         threading.Timer(120, self._reinicio_no_ocurrio).start()
         return None, None, None
 
     def _reinicio_no_ocurrio(self):
         lc = self.estado.get("last_command") or {}
         if lc.get("status") == "en_curso" and lc.get("type") in REINICIOS:
+            que = "apago" if lc.get("type") == "module.shutdown" else "reinicio"
             self._registrar_resultado(dict(lc, status="fallida", ts_applied=ahora_iso(),
-                                           detail="pasaron 120 s y el equipo no se reinicio"))
+                                           detail="pasaron 120 s y el equipo no se " + que))
 
     def _hilo_ordenes(self):
         while not _parar.is_set():

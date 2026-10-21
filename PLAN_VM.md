@@ -212,6 +212,7 @@ propuesta** (ver diferencias con el ADR) y solo la usa `media.open`:
 | `media.close` | Cierra la sesión abierta | — |
 | `app.restart` | `cit.sh reiniciar` (≈10 s medido) | — |
 | `module.restart` | `sudo -n systemctl reboot` | — |
+| `module.shutdown` | `sudo -n systemctl poweroff`. **No vuelve a encender sola** | — |
 | `diagnostics.request` | Foto del equipo | procesos, contador, gps, temperaturas, disco, pendiente por subir, reinicios de la última hora, cola del log SRT (≈1.2 KB) |
 
 ### Resultado (estado reportado)
@@ -367,10 +368,10 @@ Lo que el contrato exige del lado de la VM:
 | Cámaras IP por RTSP (Meriva MC1IP) | Hardware | Hoy una USB; `CAMARA_ID=cam0` |
 | Rotar `datos/eventos.jsonl` | Hardware | Sigue creciendo sin límite (trampa 21 de AGENTS.md) |
 
-Regla de sudoers para `module.restart` (la pone un administrador):
+Regla de sudoers para `module.restart` y `module.shutdown` (la pone un administrador):
 
 ```bash
-echo 'nelsonkanzela ALL=(root) NOPASSWD: /usr/bin/systemctl reboot' | sudo tee /etc/sudoers.d/cit-reinicio
+echo 'nelsonkanzela ALL=(root) NOPASSWD: /usr/bin/systemctl reboot, /usr/bin/systemctl poweroff' | sudo tee /etc/sudoers.d/cit-reinicio
 sudo chmod 440 /etc/sudoers.d/cit-reinicio && sudo visudo -c
 ```
 

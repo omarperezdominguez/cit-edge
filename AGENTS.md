@@ -1467,9 +1467,15 @@ entorno, salida a `datos/reinicio.log`) porque matan al propio agente:
   `boot_id` cambió → `aplicada`; si no → `fallida`. Si falla al instante (hoy,
   por falta de permiso) → `fallida` con el mensaje de `sudo`. Si en 120 s el
   proceso sigue vivo → `fallida`.
+- `module.shutdown` (nuevo, 20-oct-2026) → `sudo -n /usr/bin/systemctl
+  poweroff`. **Apaga y no vuelve sola**: hace falta cortar y devolver la
+  energía (o la ignición, cuando exista R08). Mismo cierre que el reinicio:
+  queda `en_curso` y, en el siguiente encendido, `aplicada` (`el equipo se
+  apago y volvio a encender`); si sigue vivo → `fallida`. Cuenta para el
+  límite de 3 por hora.
 
-Ambas órdenes se pueden cambiar con `CIT_CMD_REINICIO_APP` y
-`CIT_CMD_REINICIO_SO` (útil en pruebas).
+Las tres órdenes se pueden cambiar con `CIT_CMD_REINICIO_APP`,
+`CIT_CMD_REINICIO_SO` y `CIT_CMD_APAGADO_SO` (útil en pruebas).
 
 ### 5ter.4 Variables
 
@@ -1984,9 +1990,10 @@ Al escribir código en este proyecto, seguir lo que ya hay:
     Borrarlo (o el archivo entero de `datos/`) permite que un comando
     repetido se vuelva a ejecutar, y pone a 0 `pax_*` y el límite de
     reinicios. No borrarlo con la unidad en servicio.
-29. **`module.restart` necesita permiso de root sin contraseña** para
-    `systemctl reboot`. Instalado el 30-sep en `/etc/sudoers.d/cit-reinicio`
-    (solo ese comando). Si se borra, el comando vuelve a quedar `fallida`
+29. **`module.restart` y `module.shutdown` necesitan permiso de root sin
+    contraseña** para `systemctl reboot` y `systemctl poweroff`. El de reboot
+    se instaló el 30-sep en `/etc/sudoers.d/cit-reinicio`; el de poweroff hay
+    que añadirlo a la misma regla (PLAN_VM.md, fase 4). Si se borra, el comando vuelve a quedar `fallida`
     con `sudo: a password is required`, que es lo correcto. El arranque al encender ya
     está instalado (crontab `@reboot`); `./cit.sh quitar-arranque` lo quita.
     **Mientras no exista `unidad.env`, al encender arranca sin VM** (solo
