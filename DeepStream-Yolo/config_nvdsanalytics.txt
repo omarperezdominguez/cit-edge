@@ -1,0 +1,20 @@
+[property]
+enable=1
+# DEBEN coincidir con el ancho/alto del nvstreammux (trampa 3)
+config-width=640
+config-height=480
+osd-mode=1
+display-font-size=12
+
+[line-crossing-stream-0]
+enable=1
+# line-crossing-<etiqueta> = dx1;dy1;dx2;dy2 ; lx1;ly1;lx2;ly2
+#                            flecha de sentido   segmento a cruzar
+# Una sola linea vertical en x=320. El contador solo lee "entrada" y deduce
+# la salida como el cruce en sentido contrario (AGENTS.md 4.5bis).
+line-crossing-entrada=280;240;360;240;320;100;320;260
+line-crossing-salida=360;240;280;240;320;100;320;360
+# solo personas
+class-id=0
+extended=1
+mode=loose

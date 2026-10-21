@@ -30,6 +30,16 @@ __pycache__/
 # Secretos: configuracion de la unidad y certificados de AWS IoT
 unidad.env
 certs/
-DeepStream-Yolo/
 ultralytics/
 yolo_env/
+
+# DeepStream-Yolo: SI se versiona el codigo y los configs (el 12-oct-2026 se
+# perdio contador_p2p_v17.py por tener la carpeta entera aqui). Solo se
+# ignora lo pesado y lo que se reconstruye solo.
+*.engine
+*.onnx.data
+DeepStream-Yolo/peoplenet/
+DeepStream-Yolo/nvdsinfer_custom_impl_Yolo/
+DeepStream-Yolo/agora_env/
+DeepStream-Yolo/ffmpeg
+DeepStream-Yolo/sudo

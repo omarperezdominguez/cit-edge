@@ -23,7 +23,20 @@ disco y probada en banco.
 > se conservan **sin cambios** para usarlos más adelante. No se borran ni se
 > modifican (sección 0.2).
 
-Cambios del 24-sep-2026:
+Cambios del 20-oct-2026:
+
+- **La carpeta `cit/` se borró de la Jetson (12-oct).** Lo que estaba en git
+  (rama `respaldo`) se recuperó; `DeepStream-Yolo/` no, porque estaba entera
+  en `.gitignore`. Se **reconstruyó** `contador_p2p_v17.py` (v1.7r) a partir
+  de este documento, junto con `config_nvdsanalytics.txt` y
+  `config_infer_primary_peoplenet.txt` (ahora con rutas relativas).
+  `preparar_jetson.sh` revisa dependencias, descarga PeopleNet de NGC, crea
+  el tracker desde la muestra de DeepStream y construye el motor (`--motor`).
+- **`.gitignore` ya no ignora `DeepStream-Yolo/` entera**: solo modelos,
+  motores y binarios. El código del contador y sus configs van a git.
+- **`module.shutdown`** nuevo en `agente.py`: apaga la Jetson
+  (`systemctl poweroff`) en lugar de reiniciarla (5ter.3).
+
 
 - **`agente.py` nuevo**: el agente publicador único del ADR. Arma la
   telemetría, la guarda en disco antes de subirla y atiende los comandos
