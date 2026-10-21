@@ -525,7 +525,10 @@ class Manejador(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(datos)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
-        self.wfile.write(datos)
+        try:
+            self.wfile.write(datos)
+        except (BrokenPipeError, ConnectionResetError):
+            pass                     # el agente se canso de esperar; no es un error
 
     def _autorizado(self, url):
         k = (parse_qs(url.query).get("k") or [""])[0]
@@ -538,6 +541,8 @@ class Manejador(BaseHTTPRequestHandler):
                   "video": self.control.estado(), "camara": self.control.estado_camara()})
         if self.rendimiento:
             e["fps"] = self.rendimiento.fps()
+            e["personas_en_cuadro"] = self.rendimiento.ultimas
+            e["personas_con_id"] = self.rendimiento.ultimas_con_id
         return e
 
     def do_GET(self):
@@ -586,8 +591,14 @@ class Rendimiento:
         self.detecciones = 0
         self.t0 = None
         self._ventana = []
+        self.ultimas = 0
+        self.ultimas_con_id = 0
+        self.max_reciente = 0
 
-    def anotar(self, detecciones):
+    def anotar(self, detecciones, con_id=0):
+        self.ultimas = detecciones
+        self.ultimas_con_id = con_id
+        self.max_reciente = max(self.max_reciente, detecciones)
         t = time.time()
         if self.t0 is None:
             self.t0 = t
@@ -813,7 +824,7 @@ def main():
                     l_obj = l_obj.next
                 except StopIteration:
                     break
-            rendimiento.anotar(detecciones)
+            rendimiento.anotar(detecciones, len(personas))
 
             for ident, etiqueta in _contar_cruces(geo, personas, time.time()):
                 c = conteo_actual()
@@ -902,6 +913,15 @@ def main():
             w, _ = msg.parse_warning()
             log("AVISO de {}: {}".format(msg.src.get_name() if msg.src else "?", w))
         return True
+
+    def latido():
+        c = conteo_actual()
+        log("estado: {} fps, hasta {} personas vistas en 30 s, aforo {} (E {} / S {}), camara {}".format(
+            rendimiento.fps(), rendimiento.max_reciente, c["aforo"], c["entradas"], c["salidas"],
+            "viva" if control.estado_camara()["activa"] else "SIN CUADROS"))
+        rendimiento.max_reciente = 0
+        return True
+    GLib.timeout_add_seconds(30, latido)
 
     gbus = pipeline.get_bus()
     gbus.add_signal_watch()
