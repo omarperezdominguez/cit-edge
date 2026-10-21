@@ -8,8 +8,8 @@ participa; está listado al final, en
 [Archivos que NO forman parte del sistema](#9-archivos-que-no-forman-parte-del-sistema),
 para que no se toque por error.
 
-Última revisión: **24 de septiembre de 2026**, verificada contra el código en
-disco y probada en banco.
+Última revisión: **21 de octubre de 2026**: código reconstruido y probado en
+la Jetson contra la VM real (ver cambios del 20-oct).
 
 > **Decisión vigente: ADR-001 v1.6** (*Interfaz de datos entre Edge Mobility y
 > las plataformas RuTi*). La unidad habla con una **VM propia** por tres
@@ -35,8 +35,25 @@ Cambios del 20-oct-2026:
 - **`.gitignore` ya no ignora `DeepStream-Yolo/` entera**: solo modelos,
   motores y binarios. El código del contador y sus configs van a git.
 - **`module.shutdown`** nuevo en `agente.py`: apaga la Jetson
-  (`systemctl poweroff`) en lugar de reiniciarla (5ter.3).
+  (`systemctl poweroff`) en lugar de reiniciarla (5ter.3). Necesita
+  `systemctl poweroff` en `/etc/sudoers.d/cit-reinicio` (PLAN_VM.md, fase 4).
+  En la VM se añadió a la lista cerrada de `api.py` (`TIPOS`), en
+  `/opt/cit-vm/api.py` y en `~damia/cit-vm/api.py` (respaldo en
+  `/opt/cit-vm/api.py.antes`).
+- **El contador escribe una línea de estado cada 30 s** (fps, personas vistas,
+  aforo, cámara) y `/estado` trae `personas_en_cuadro` y `personas_con_id`.
+  Sirve para saber si el detector ve a alguien aunque nadie cruce.
+- **Probado en la Jetson el 21-oct-2026, contra la VM real** (`nube-edge-2026`):
+  motor INT8 de PeopleNet construido en 85 s; conteo de entradas y salidas
+  con la cámara; telemetría guardada en la BD de la VM cada 10 s con
+  `gnss_fix: gps`; `media.open` por la API → video visto en el navegador por
+  WebRTC con ticket; cierre automático a los 30/60 s y cuota descontada.
+- **El código ahora vive en `github.com/omarperezdominguez/cit-edge`**
+  (rama `main`). El repo `CITMobility/visio_artificial` (rama `respaldo`)
+  queda como respaldo. Flujo de trabajo: editar en la laptop, `./subir.sh`
+  copia a la Jetson y reinicia, `git push` guarda.
 
+Cambios del 24-sep-2026:
 
 - **`agente.py` nuevo**: el agente publicador único del ADR. Arma la
   telemetría, la guarda en disco antes de subirla y atiende los comandos

@@ -6,7 +6,7 @@ planos**: telemetría, medios (video) y control (comandos). Este documento dice
 qué hay ya en la Jetson, cuál es el contrato exacto que la VM tiene que
 implementar y qué queda pendiente.
 
-Última actualización: **24-sep-2026**.
+Última actualización: **21-oct-2026**.
 
 > **AWS IoT Core queda de reserva, sin cambios.** `reenviador.py`,
 > `~/cit.sh` v3, `certs/` y la ventana `aws` de `cit.sh` no se tocaron. Nada
@@ -15,9 +15,53 @@ implementar y qué queda pendiente.
 | Fase | Qué | Responsable (ADR §2.1) | Estado |
 |---|---|---|---|
 | 1 | Jetson: agente publicador, contrato v1, comandos, sesión de video acotada | Hardware | **Hecha y probada en banco (24-sep)** |
-| 2 | VM: broker MQTT con TLS + MediaMTX + firewall | Software/TI | Pendiente |
-| 3 | VM: servicio de ingesta, base de datos propia, API de Edge, ticket de video | Software/TI | Pendiente |
+| 2 | VM: broker MQTT con TLS + MediaMTX + firewall | Software/TI | **Hecha** (`nube-edge-2026`, ver abajo) |
+| 3 | VM: servicio de ingesta, base de datos propia, API de Edge, ticket de video | Software/TI | **Hecha**; probada con la Jetson el 21-oct |
 | 4 | Endurecer: arranque automático, permiso de reinicio, R08/R32 en la carrier board | Hardware | Parcial (ver pendientes) |
+
+---
+
+## Estado al 21-oct-2026
+
+La VM la montó Damián (proyecto GCP `edge-desarrollo`, VM `nube-edge-2026`,
+`northamerica-south1-a`, IP fija `34.51.107.234`, Debian 13). Su código y su
+documentación están en `/home/damia/cit-vm/` (README, `GUIA_API.md`,
+`instalar.sh`); hay un respaldo en `~angelc/cit-vm-respaldo.tgz`.
+
+| Servicio | Puerto | Para qué |
+|---|---|---|
+| Mosquitto | 8883 TLS (fuera), 1883 (solo local) | Telemetría, resultados y órdenes |
+| `cit-ingesta` | — | Guarda en SQLite `/var/lib/cit-vm/cit.db` (7 días) |
+| `cit-api` | 8443 HTTPS + token | API para RuTi: telemetría, comandos, tickets de video |
+| MediaMTX | 8890 SRT, 8889 WebRTC | Recibe el video de la Jetson y lo entrega con ticket |
+
+Probado de punta a punta el 21-oct con la Jetson: telemetría en la BD,
+`media.open` → video en el navegador, cierre automático y cuota.
+
+**Datos de la Jetson en `unidad.env`**: `VM_HOST=34.51.107.234`, puerto 8883,
+TLS, CA en `vm_ca/ca.crt` (es la misma de `/etc/mosquitto/certs/ca.crt`),
+usuario `cit-001`. Las contraseñas (`MQTT_CIT_001`, `SRT_CIT_001`) están en
+`/etc/cit-vm/secretos.env` de la VM y **nunca van a git**.
+
+**Pendiente de seguridad:** las credenciales actuales (MQTT, SRT y el token
+de la API) son de prueba y ya circularon. Rotarlas antes de instalar la
+unidad en un camión.
+
+**Para mandar órdenes:** desde una laptop con `vm_ca/ca.crt`, por la API:
+
+```bash
+# video (devuelve la liga "visor" para el navegador)
+curl --cacert vm_ca/ca.crt -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -X POST -d '{"issued_by":"quien","reason":"por que","duration_s":60}' \
+  https://34.51.107.234:8443/v1/unidades/cit-001/video
+# cualquier otra orden de la lista cerrada (aqui, apagar la Jetson)
+curl --cacert vm_ca/ca.crt -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -X POST -d '{"type":"module.shutdown","issued_by":"quien","reason":"por que"}' \
+  "https://34.51.107.234:8443/v1/unidades/cit-001/comandos?esperar=20"
+```
+
+o desde la VM con `~angelc/orden.sh <tipo> [segundos]` (usa el usuario MQTT
+`api`; pide escribir `APAGAR` antes de `module.shutdown`).
 
 ---
 
